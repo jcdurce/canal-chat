@@ -60,3 +60,20 @@ Pour un usage régulier, Railway est préférable.
 - **Ctrl+Entrée** pour envoyer
 - Vous pouvez coller des centaines de lignes de texte directement
 - Aucun message n'est conservé après déconnexion
+
+---
+
+## Partage de fichiers
+
+Chaque session de chat permet d'envoyer un fichier au destinataire ouvert, en plus du texte.
+
+- **Bouton 📎** à côté d'Envoyer, ou **glisser-déposer** directement dans la fenêtre de conversation
+- **Taille maximale : 50 Mo** par fichier
+- **Tous les types de fichiers** sont acceptés
+- Le fichier est gardé **uniquement en mémoire serveur** — jamais écrit sur disque
+- **Téléchargement à usage unique** : dès que le destinataire clique sur « Télécharger », le fichier disparaît de la mémoire du serveur
+- **Expiration automatique après 15 minutes** si le destinataire ne télécharge pas
+- **Purge immédiate** si l'expéditeur ou le destinataire se déconnecte avant le téléchargement — rien ne reste en mémoire
+- L'expéditeur voit une barre de progression pendant l'envoi, puis une confirmation quand le fichier a été téléchargé
+
+Aucune configuration supplémentaire n'est requise sur Render ou Railway — la fonctionnalité fait partie du même serveur `main.py`.

@@ -119,6 +119,13 @@
     color: var(--ink);
   }
 
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
   #login-error {
     margin-top: 0.75rem;
     font-size: 0.8rem;
@@ -244,6 +251,7 @@
     flex-direction: column;
     overflow: hidden;
     background: var(--bg);
+    position: relative;
   }
 
   /* ── Écran d'accueil (aucun destinataire) ──────────────── */
@@ -319,6 +327,82 @@
     font-family: 'IBM Plex Mono', monospace;
   }
 
+  /* ── Bulle de fichier ──────────────────────────────────── */
+  .msg.file {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    white-space: normal;
+  }
+
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .file-icon {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    border: 1.5px solid currentColor;
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+
+  .file-info { min-width: 0; }
+
+  .file-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 0.85rem;
+    overflow-wrap: break-word;
+  }
+
+  .file-size {
+    font-size: 0.68rem;
+    opacity: 0.65;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .file-action {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    border: 1.5px solid currentColor;
+    padding: 0.3rem 0.7rem;
+    align-self: flex-start;
+    cursor: pointer;
+    background: transparent;
+    color: inherit;
+  }
+
+  .msg.recv .file-action:hover { background: var(--ink); color: var(--bg); }
+  .msg.sent .file-action:hover { background: var(--sent-fg); color: var(--sent); }
+
+  .file-note {
+    font-size: 0.68rem;
+    opacity: 0.6;
+    font-style: italic;
+  }
+
+  .file-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(0,0,0,0.12);
+    overflow: hidden;
+  }
+  .msg.sent .file-progress-track { background: rgba(255,255,255,0.25); }
+
+  .file-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: currentColor;
+    transition: width 120ms linear;
+  }
+
   /* ── Zone de saisie ────────────────────────────────────── */
   #input-area {
     display: none;
@@ -360,12 +444,45 @@
 
   .input-row .btn { width: auto; }
 
+  #btn-attach {
+    width: auto;
+    padding: 0.65rem 0.9rem;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
   #char-count {
     font-size: 0.68rem;
     color: var(--muted);
     font-family: 'IBM Plex Mono', monospace;
     margin-left: auto;
   }
+
+  #file-error {
+    font-size: 0.72rem;
+    color: var(--error);
+    font-family: 'IBM Plex Mono', monospace;
+    display: none;
+  }
+
+  /* ── Survol de glisser-déposer ──────────────────────────── */
+  #drop-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(245,244,240,0.92);
+    border: 3px dashed var(--border);
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    z-index: 5;
+    pointer-events: none;
+  }
+  #chat-area.drag-active #drop-overlay { display: flex; }
 
   /* ── Scrollbar discrète ────────────────────────────────── */
   ::-webkit-scrollbar { width: 5px; }
@@ -424,6 +541,8 @@
   <!-- Zone de chat -->
   <div id="chat-area">
 
+    <div id="drop-overlay">Déposez le fichier ici</div>
+
     <div id="chat-welcome">
       <div class="arrow">←</div>
       <div>Sélectionnez un utilisateur<br>pour démarrer une conversation privée.</div>
@@ -432,16 +551,19 @@
     <div id="chat-header">
       <span class="dot" style="width:7px;height:7px;border-radius:50%;background:#27ae60;display:inline-block;"></span>
       <span class="with" id="chat-with-name">—</span>
-      <span class="ephemeral-note">messages non sauvegardés</span>
+      <span class="ephemeral-note">messages &amp; fichiers non sauvegardés</span>
     </div>
 
     <div id="messages"></div>
 
     <div id="input-area">
-      <span class="hint">Ctrl+Entrée pour envoyer · Vous pouvez coller de très longs textes</span>
+      <span class="hint">Ctrl+Entrée pour envoyer · Collez de très longs textes · 📎 ou glissez-déposez un fichier (max 50 Mo)</span>
       <textarea id="message-input" placeholder="Écrivez ici… Ctrl+V pour coller, Ctrl+Entrée pour envoyer."></textarea>
+      <div id="file-error"></div>
       <div class="input-row">
         <button class="btn" id="btn-send">Envoyer</button>
+        <button class="btn secondary" id="btn-attach" title="Joindre un fichier">📎</button>
+        <input type="file" id="file-input" style="display:none">
         <span id="char-count">0 caractères</span>
       </div>
     </div>
@@ -456,14 +578,18 @@
 (function() {
   "use strict";
 
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 Mo — doit correspondre au backend
+
   // ── État ─────────────────────────────────────────────────
   let ws = null;
   let myPseudo = "";
   let activePeer = null;
-  // { peer: [{ from, text, sent, ts }] }
+  // { peer: [{ kind:'text'|'file', from, text, sent, ts, transferId, filename, size, status }] }
   const conversations = {};
   // { peer: count }
   const unread = {};
+  // { transferId: { bubbleEl, actionEl, noteEl, kind:'sent'|'recv' } } — bulles visibles pour mise à jour live
+  const fileBubbles = {};
 
   // ── Éléments DOM ─────────────────────────────────────────
   const loginScreen   = document.getElementById("login-screen");
@@ -474,6 +600,7 @@
   const btnDisconnect = document.getElementById("btn-disconnect");
   const topbarPseudo  = document.getElementById("topbar-pseudo");
   const userList      = document.getElementById("user-list");
+  const chatArea      = document.getElementById("chat-area");
   const chatWelcome   = document.getElementById("chat-welcome");
   const chatHeader    = document.getElementById("chat-header");
   const chatWithName  = document.getElementById("chat-with-name");
@@ -481,6 +608,9 @@
   const inputArea     = document.getElementById("input-area");
   const msgInput      = document.getElementById("message-input");
   const btnSend       = document.getElementById("btn-send");
+  const btnAttach     = document.getElementById("btn-attach");
+  const fileInput     = document.getElementById("file-input");
+  const fileError     = document.getElementById("file-error");
   const charCount     = document.getElementById("char-count");
 
   // ── Connexion ─────────────────────────────────────────────
@@ -516,6 +646,7 @@
     activePeer = null;
     Object.keys(conversations).forEach(k => delete conversations[k]);
     Object.keys(unread).forEach(k => delete unread[k]);
+    Object.keys(fileBubbles).forEach(k => delete fileBubbles[k]);
     appEl.style.display = "none";
     loginScreen.style.display = "flex";
     if (unexpected) showLoginError("Connexion interrompue. Reconnectez-vous.");
@@ -543,37 +674,79 @@
         break;
 
       case "message": {
-        // Message reçu d'un pair
         const peer = data.from;
         if (!conversations[peer]) conversations[peer] = [];
-        conversations[peer].push({ from: peer, text: data.text, sent: false, ts: now() });
+        conversations[peer].push({ kind: "text", from: peer, text: data.text, sent: false, ts: now() });
         if (activePeer === peer) {
           appendMsg("recv", peer, data.text);
         } else {
           unread[peer] = (unread[peer] || 0) + 1;
-          renderUserList(Object.keys(conversations).concat(
-            Array.from(document.querySelectorAll(".user-item")).map(el => el.dataset.pseudo)
-          ).filter((v,i,a) => a.indexOf(v) === i));
-          // Déclenche re-render de la liste
           refreshUserList();
         }
         break;
       }
 
       case "message_sent": {
-        // Copie de ce qu'on a envoyé
         const peer = data.to;
         if (!conversations[peer]) conversations[peer] = [];
-        conversations[peer].push({ from: myPseudo, text: data.text, sent: true, ts: now() });
+        conversations[peer].push({ kind: "text", from: myPseudo, text: data.text, sent: true, ts: now() });
         if (activePeer === peer) {
           appendMsg("sent", null, data.text);
         }
         break;
       }
+
+      case "file": {
+        // Fichier reçu d'un pair
+        const peer = data.from;
+        const entry = {
+          kind: "file", from: peer, sent: false, ts: now(),
+          transferId: data.transfer_id, filename: data.filename, size: data.size,
+          status: "available",
+        };
+        if (!conversations[peer]) conversations[peer] = [];
+        conversations[peer].push(entry);
+        if (activePeer === peer) {
+          renderFileBubble(entry, "recv");
+        } else {
+          unread[peer] = (unread[peer] || 0) + 1;
+          refreshUserList();
+        }
+        break;
+      }
+
+      case "file_sent": {
+        // Confirmation de notre propre envoi
+        const peer = data.to;
+        const entry = {
+          kind: "file", from: myPseudo, sent: true, ts: now(),
+          transferId: data.transfer_id, filename: data.filename, size: data.size,
+          status: "available",
+        };
+        if (!conversations[peer]) conversations[peer] = [];
+        // Remplace l'éventuelle entrée "en cours d'envoi" de ce même fichier
+        const idx = conversations[peer].findIndex(m => m.kind === "file" && m.transferId === "pending:" + data.filename + data.size);
+        if (idx !== -1) conversations[peer][idx] = entry; else conversations[peer].push(entry);
+        if (activePeer === peer) {
+          clearUploadPlaceholder();
+          renderFileBubble(entry, "sent");
+        }
+        break;
+      }
+
+      case "file_expired": {
+        markFileStatus(data.transfer_id, "expired", "Fichier expiré ou déjà téléchargé.");
+        break;
+      }
+
+      case "file_downloaded": {
+        markFileStatus(data.transfer_id, "downloaded", `Téléchargé par ${data.by}.`);
+        break;
+      }
     }
   }
 
-  // ── Envoi de message ──────────────────────────────────────
+  // ── Envoi de message texte ─────────────────────────────────
   function sendMessage() {
     const text = msgInput.value;
     if (!text.trim() || !activePeer || !ws) return;
@@ -587,6 +760,72 @@
     msgInput.value = "";
     charCount.textContent = "0 caractères";
     msgInput.focus();
+  }
+
+  // ── Envoi de fichier ────────────────────────────────────────
+  let uploadPlaceholderEl = null;
+
+  function clearUploadPlaceholder() {
+    if (uploadPlaceholderEl) { uploadPlaceholderEl.remove(); uploadPlaceholderEl = null; }
+  }
+
+  function showFileError(msg) {
+    fileError.textContent = msg;
+    fileError.style.display = "block";
+    setTimeout(() => { fileError.style.display = "none"; }, 5000);
+  }
+
+  function sendFile(file) {
+    if (!activePeer || !ws) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      showFileError(`« ${file.name} » dépasse la limite de 50 Mo.`);
+      return;
+    }
+    if (file.size === 0) {
+      showFileError(`« ${file.name} » est vide.`);
+      return;
+    }
+
+    // Bulle de progression locale (côté expéditeur) pendant l'envoi
+    if (activePeer) {
+      clearUploadPlaceholder();
+      uploadPlaceholderEl = buildFileBubbleEl({
+        filename: file.name, size: file.size, status: "uploading",
+      }, "sent");
+      messagesEl.appendChild(uploadPlaceholderEl);
+      scrollBottom();
+    }
+
+    const xhr = new XMLHttpRequest();
+    const url = `/upload?from=${encodeURIComponent(myPseudo)}&to=${encodeURIComponent(activePeer)}&filename=${encodeURIComponent(file.name)}`;
+    xhr.open("POST", url);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (!e.lengthComputable || !uploadPlaceholderEl) return;
+      const pct = Math.round((e.loaded / e.total) * 100);
+      const fill = uploadPlaceholderEl.querySelector(".file-progress-fill");
+      if (fill) fill.style.width = pct + "%";
+    });
+
+    xhr.onload = () => {
+      if (xhr.status >= 400) {
+        clearUploadPlaceholder();
+        let msg = "Échec de l'envoi du fichier.";
+        try { msg = JSON.parse(xhr.responseText).detail || msg; } catch (e2) {}
+        showFileError(msg);
+      }
+      // En cas de succès, le serveur renvoie un événement "file_sent" via WebSocket
+      // qui remplacera la bulle de progression par la bulle finale.
+    };
+
+    xhr.onerror = () => {
+      clearUploadPlaceholder();
+      showFileError("Connexion perdue pendant l'envoi du fichier.");
+    };
+
+    xhr.send(file);
   }
 
   // ── Rendu liste utilisateurs ─────────────────────────────
@@ -641,12 +880,19 @@
     chatHeader.style.display  = "flex";
     inputArea.style.display   = "flex";
     messagesEl.innerHTML      = "";
+    Object.keys(fileBubbles).forEach(k => delete fileBubbles[k]);
+    uploadPlaceholderEl = null;
 
     // Rejouer l'historique local
     const history = conversations[peer] || [];
     history.forEach(m => {
-      if (m.sent) appendMsg("sent", null, m.text, m.ts);
-      else        appendMsg("recv", m.from, m.text, m.ts);
+      if (m.kind === "file") {
+        renderFileBubble(m, m.sent ? "sent" : "recv");
+      } else if (m.sent) {
+        appendMsg("sent", null, m.text, m.ts);
+      } else {
+        appendMsg("recv", m.from, m.text, m.ts);
+      }
     });
 
     refreshUserList();
@@ -654,7 +900,7 @@
     scrollBottom();
   }
 
-  // ── Affichage d'un message ────────────────────────────────
+  // ── Affichage d'un message texte ───────────────────────────
   function appendMsg(type, from, text, ts = null) {
     const div = document.createElement("div");
     div.className = "msg " + type;
@@ -674,6 +920,109 @@
     scrollBottom();
   }
 
+  // ── Affichage d'une bulle de fichier ───────────────────────
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " o";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Ko";
+    return (bytes / (1024 * 1024)).toFixed(1) + " Mo";
+  }
+
+  function buildFileBubbleEl(entry, side) {
+    // side: "sent" | "recv"
+    const div = document.createElement("div");
+    div.className = "msg file " + side;
+
+    if (side === "recv" && entry.from) {
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = entry.from + (entry.ts ? " · " + entry.ts : "");
+      div.appendChild(meta);
+    }
+
+    const row = document.createElement("div");
+    row.className = "file-row";
+
+    const icon = document.createElement("span");
+    icon.className = "file-icon";
+    icon.textContent = "FICHIER";
+
+    const info = document.createElement("div");
+    info.className = "file-info";
+    const name = document.createElement("div");
+    name.className = "file-name";
+    name.textContent = entry.filename;
+    const size = document.createElement("div");
+    size.className = "file-size";
+    size.textContent = formatSize(entry.size);
+    info.appendChild(name);
+    info.appendChild(size);
+
+    row.appendChild(icon);
+    row.appendChild(info);
+    div.appendChild(row);
+
+    if (entry.status === "uploading") {
+      const track = document.createElement("div");
+      track.className = "file-progress-track";
+      const fill = document.createElement("div");
+      fill.className = "file-progress-fill";
+      track.appendChild(fill);
+      div.appendChild(track);
+      const note = document.createElement("div");
+      note.className = "file-note";
+      note.textContent = "Envoi en cours…";
+      div.appendChild(note);
+    } else if (side === "recv" && entry.status === "available") {
+      const link = document.createElement("a");
+      link.className = "file-action";
+      link.href = `/download/${entry.transferId}`;
+      link.textContent = "Télécharger";
+      link.setAttribute("data-transfer-action", "1");
+      div.appendChild(link);
+    } else {
+      const note = document.createElement("div");
+      note.className = "file-note";
+      if (entry.status === "downloaded") note.textContent = "Téléchargé.";
+      else if (entry.status === "expired") note.textContent = "Fichier expiré ou déjà téléchargé.";
+      else if (side === "sent") note.textContent = "Remis — en attente de téléchargement.";
+      div.appendChild(note);
+    }
+
+    return div;
+  }
+
+  function renderFileBubble(entry, side) {
+    const el = buildFileBubbleEl(entry, side);
+    messagesEl.appendChild(el);
+    if (entry.transferId) {
+      fileBubbles[entry.transferId] = { el, side };
+    }
+    scrollBottom();
+  }
+
+  function markFileStatus(transferId, status, noteText) {
+    // Met à jour la copie en mémoire (pour une réouverture ultérieure de la conversation)
+    Object.values(conversations).forEach(list => {
+      list.forEach(m => {
+        if (m.kind === "file" && m.transferId === transferId) m.status = status;
+      });
+    });
+
+    const ref = fileBubbles[transferId];
+    if (!ref) return; // bulle pas affichée actuellement
+
+    const { el, side } = ref;
+    const link = el.querySelector('[data-transfer-action]');
+    if (link) link.remove();
+    let note = el.querySelector(".file-note");
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "file-note";
+      el.appendChild(note);
+    }
+    note.textContent = noteText;
+  }
+
   function scrollBottom() {
     requestAnimationFrame(() => {
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -690,7 +1039,7 @@
     loginError.style.display = "block";
   }
 
-  // ── Événements ────────────────────────────────────────────
+  // ── Événements — connexion ─────────────────────────────────
   btnConnect.addEventListener("click", () => {
     const p = pseudoInput.value.trim();
     if (!p) { showLoginError("Entrez un pseudo."); return; }
@@ -704,6 +1053,7 @@
 
   btnDisconnect.addEventListener("click", () => disconnect());
 
+  // ── Événements — messages texte ────────────────────────────
   btnSend.addEventListener("click", sendMessage);
 
   msgInput.addEventListener("keydown", e => {
@@ -717,6 +1067,39 @@
     const n = msgInput.value.length;
     const lines = msgInput.value.split("\n").length;
     charCount.textContent = `${n.toLocaleString()} caractères · ${lines} lignes`;
+  });
+
+  // ── Événements — fichiers ───────────────────────────────────
+  btnAttach.addEventListener("click", () => {
+    if (!activePeer) return;
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    fileInput.value = ""; // permet de resélectionner le même fichier ensuite
+    if (file) sendFile(file);
+  });
+
+  // Glisser-déposer sur la zone de chat
+  ["dragenter", "dragover"].forEach(evt => {
+    chatArea.addEventListener(evt, e => {
+      if (!activePeer) return;
+      e.preventDefault();
+      chatArea.classList.add("drag-active");
+    });
+  });
+  ["dragleave", "drop"].forEach(evt => {
+    chatArea.addEventListener(evt, e => {
+      e.preventDefault();
+      if (evt === "dragleave" && e.target !== chatArea) return;
+      chatArea.classList.remove("drag-active");
+    });
+  });
+  chatArea.addEventListener("drop", e => {
+    if (!activePeer) return;
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) sendFile(file);
   });
 
 })();
