@@ -365,6 +365,8 @@
   }
 
   .file-action {
+    appearance: none;
+    -webkit-appearance: none;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.72rem;
     font-weight: 600;
@@ -372,6 +374,7 @@
     letter-spacing: 0.06em;
     text-decoration: none;
     border: 1.5px solid currentColor;
+    border-radius: 0;
     padding: 0.3rem 0.7rem;
     align-self: flex-start;
     cursor: pointer;
@@ -612,6 +615,26 @@
   const fileInput     = document.getElementById("file-input");
   const fileError     = document.getElementById("file-error");
   const charCount     = document.getElementById("char-count");
+
+  // ── Pont Java (navigateur JavaFX "Navigator") ──────────────
+  // Si cette page tourne dans le navigateur JavaFX maison plutôt que
+  // dans un navigateur standard, un objet window.javaApp est injecté
+  // après chaque chargement de page (voir le dépôt "navigator").
+  // WebView (moteur de ce navigateur) ne gère ni l'ouverture native
+  // d'un sélecteur de fichier déclenché par script, ni les
+  // téléchargements — ce pont fait les deux côté Java à la place.
+  // On ne met rien en cache : on teste window.javaApp au moment de
+  // l'action, car il n'existe pas encore tant que la page n'a pas
+  // fini de charger.
+  window.onJavaBridgeEvent = function (type, detail) {
+    if (type === "uploadError") {
+      showFileError(detail || "Échec de l'envoi du fichier.");
+    } else if (type === "downloadError") {
+      showFileError(detail || "Échec du téléchargement.");
+    }
+    // "downloadDone" n'a rien à faire ici : l'événement WebSocket
+    // "file_downloaded" / "file_expired" met déjà à jour la bulle.
+  };
 
   // ── Connexion ─────────────────────────────────────────────
   function connect(pseudo) {
@@ -973,12 +996,27 @@
       note.textContent = "Envoi en cours…";
       div.appendChild(note);
     } else if (side === "recv" && entry.status === "available") {
-      const link = document.createElement("a");
-      link.className = "file-action";
-      link.href = `/download/${entry.transferId}`;
-      link.textContent = "Télécharger";
-      link.setAttribute("data-transfer-action", "1");
-      div.appendChild(link);
+      if (window.javaApp) {
+        // Navigateur JavaFX : WebView ne propose pas de "Enregistrer
+        // sous" pour un lien de téléchargement — le pont Java ouvre
+        // un sélecteur natif et récupère le fichier lui-même en HTTP.
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "file-action";
+        btn.textContent = "Télécharger";
+        btn.setAttribute("data-transfer-action", "1");
+        btn.addEventListener("click", () => {
+          window.javaApp.downloadFile(`${location.origin}/download/${entry.transferId}`, entry.filename);
+        });
+        div.appendChild(btn);
+      } else {
+        const link = document.createElement("a");
+        link.className = "file-action";
+        link.href = `/download/${entry.transferId}`;
+        link.textContent = "Télécharger";
+        link.setAttribute("data-transfer-action", "1");
+        div.appendChild(link);
+      }
     } else {
       const note = document.createElement("div");
       note.className = "file-note";
@@ -1072,7 +1110,15 @@
   // ── Événements — fichiers ───────────────────────────────────
   btnAttach.addEventListener("click", () => {
     if (!activePeer) return;
-    fileInput.click();
+    if (window.javaApp) {
+      // Navigateur JavaFX : le pont Java ouvre son propre sélecteur de
+      // fichier natif et effectue l'envoi lui-même en HTTP. La bulle
+      // apparaîtra via l'événement WebSocket "file_sent" une fois
+      // l'envoi terminé — pas de barre de progression dans ce cas.
+      window.javaApp.pickAndUploadFile(myPseudo, activePeer, location.origin);
+    } else {
+      fileInput.click();
+    }
   });
 
   fileInput.addEventListener("change", () => {
