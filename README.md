@@ -77,3 +77,12 @@ Chaque session de chat permet d'envoyer un fichier au destinataire ouvert, en pl
 - L'expéditeur voit une barre de progression pendant l'envoi, puis une confirmation quand le fichier a été téléchargé
 
 Aucune configuration supplémentaire n'est requise sur Render ou Railway — la fonctionnalité fait partie du même serveur `main.py`.
+
+### Compatibilité avec un navigateur JavaFX personnalisé (ex. "Navigator")
+
+`WebView` (le moteur de rendu de JavaFX) ne gère nativement ni l'ouverture d'un sélecteur de fichier déclenchée par script, ni le téléchargement de fichiers (`Content-Disposition: attachment`). Dans Chrome et tout navigateur standard, rien ne change. Mais si la page est ouverte dans un navigateur JavaFX qui injecte un objet `window.javaApp` (voir le dépôt [`navigator`](https://github.com/jcdurce/navigator)), `index.html` détecte cet objet et délègue automatiquement :
+
+- le bouton **📎** → `window.javaApp.pickAndUploadFile(from, to, baseOrigin)`
+- le bouton **Télécharger** → `window.javaApp.downloadFile(url, filename)`
+
+Le **glisser-déposer** d'un fichier depuis le système d'exploitation, lui, reste non fonctionnel dans ce navigateur JavaFX — WebView ne supporte pas ce mécanisme, même avec le pont. Utilisez le bouton 📎 dans ce cas.
