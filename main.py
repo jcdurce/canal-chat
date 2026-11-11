@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, Response
 app = FastAPI()
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
-MAX_FILE_SIZE = 50 * 1024 * 1024       # 50 Mo
+MAX_FILE_SIZE = 85 * 1024 * 1024       # 85 Mo
 FILE_EXPIRY_SECONDS = 15 * 60          # 15 minutes si jamais téléchargé
 
 # ─── État en mémoire (éphémère) ────────────────────────────────────────────────
