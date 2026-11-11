@@ -560,7 +560,7 @@
     <div id="messages"></div>
 
     <div id="input-area">
-      <span class="hint">Ctrl+Entrée pour envoyer · Collez de très longs textes · 📎 ou glissez-déposez un fichier (max 50 Mo)</span>
+      <span class="hint">Ctrl+Entrée pour envoyer · Collez de très longs textes · 📎 ou glissez-déposez un fichier (max 85 Mo)</span>
       <textarea id="message-input" placeholder="Écrivez ici… Ctrl+V pour coller, Ctrl+Entrée pour envoyer."></textarea>
       <div id="file-error"></div>
       <div class="input-row">
@@ -581,7 +581,7 @@
 (function() {
   "use strict";
 
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 Mo — doit correspondre au backend
+  const MAX_FILE_SIZE = 85 * 1024 * 1024; // 85 Mo — doit correspondre au backend
 
   // ── État ─────────────────────────────────────────────────
   let ws = null;
@@ -802,7 +802,7 @@
     if (!activePeer || !ws) return;
 
     if (file.size > MAX_FILE_SIZE) {
-      showFileError(`« ${file.name} » dépasse la limite de 50 Mo.`);
+      showFileError(`« ${file.name} » dépasse la limite de 85 Mo.`);
       return;
     }
     if (file.size === 0) {
