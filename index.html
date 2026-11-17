@@ -492,6 +492,59 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
 
+  /* ── Modal Automatismes ─────────────────────────────── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(26,26,26,0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; padding: 1rem;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
+    background: var(--surface); border: 2px solid var(--border);
+    box-shadow: 6px 6px 0 rgba(0,0,0,0.15);
+  }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 1.1rem; border-bottom: 2px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 0.95rem;
+  }
+  .modal-x { appearance: none; background: transparent; border: none;
+    font-size: 1.4rem; cursor: pointer; color: var(--ink); line-height: 1; }
+  .modal-body { padding: 1.1rem; display: flex; flex-direction: column; gap: 1.4rem; }
+  .auto-section { display: flex; flex-direction: column; gap: 0.5rem; }
+  .auto-section h3 {
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; font-weight: 600;
+    border-bottom: 1px solid #e0e0de; padding-bottom: 0.3rem; margin-bottom: 0.2rem;
+  }
+  .auto-section label {
+    display: block; font-size: 0.7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-top: 0.5rem; margin-bottom: 0.25rem;
+  }
+  .auto-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .auto-row .btn { width: auto; }
+  .auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  @media (max-width: 600px) { .auto-grid { grid-template-columns: 1fr; } }
+  .auto-section select, .auto-section input[type="number"] {
+    width: 100%; border: 2px solid var(--border); background: var(--bg);
+    padding: 0.5rem 0.6rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
+    outline: none;
+  }
+  .dir-name { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem;
+    color: var(--muted); word-break: break-all; }
+  .auto-status {
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;
+    padding: 0.5rem 0.6rem; border: 1px dashed var(--border); background: var(--bg);
+    min-height: 2.4em; word-break: break-word;
+  }
+  .auto-status.ok  { color: #1b7a33; border-color: #1b7a33; }
+  .auto-status.err { color: var(--error); border-color: var(--error); }
+  .auto-warn, .auto-note { font-size: 0.72rem; color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace; line-height: 1.5; }
+  #btn-auto { font-size: 0.95rem; padding: 0.3rem 0.7rem; width: auto; }
+
   /* ── Responsive (petit écran) ──────────────────────────── */
   @media (max-width: 600px) {
     #app { grid-template-columns: 1fr; grid-template-rows: 48px auto 1fr; }
@@ -530,6 +583,7 @@
     <span class="you">connecté en tant que <strong id="topbar-pseudo">—</strong></span>
     <span class="spacer"></span>
     <span><span class="status-dot"></span></span>
+    <button class="btn secondary" id="btn-auto" title="Automatismes de transfert">⚙</button>
     <button class="btn secondary" id="btn-disconnect">Déconnecter</button>
   </div>
 
@@ -577,6 +631,75 @@
 <!-- ══════════════════════════════════════════
      SCRIPT
 ══════════════════════════════════════════ -->
+<!-- ═══ Automatismes de transfert (modal) ═══ -->
+<div id="auto-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <span>⚙ Automatismes de transfert</span>
+      <button id="auto-close" class="modal-x" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="modal-body">
+
+      <section class="auto-section">
+        <h3>↑ Envoi automatique</h3>
+        <label for="auto-send-pick">Dossier d'envoi (fichiers chiffrés + fractionnés)</label>
+        <div class="auto-row">
+          <button id="auto-send-pick" class="btn secondary" type="button">Choisir le dossier…</button>
+          <span id="auto-send-dir" class="dir-name">—</span>
+        </div>
+        <label for="auto-send-to">Destinataire</label>
+        <select id="auto-send-to"></select>
+        <div class="auto-grid">
+          <div>
+            <label for="auto-send-freq">Fréquence</label>
+            <select id="auto-send-freq">
+              <option value="continu">Continu (dès que possible)</option>
+              <option value="1min">Lot toutes les minutes</option>
+              <option value="1h" selected>Toutes les heures</option>
+              <option value="2h">Toutes les 2 heures</option>
+              <option value="6h">Toutes les 6 heures</option>
+              <option value="12h">Toutes les 12 heures</option>
+              <option value="24h">1 fois par jour</option>
+            </select>
+          </div>
+          <div>
+            <label for="auto-send-batch">Fichiers par cycle</label>
+            <input id="auto-send-batch" type="number" min="1" max="500" value="10">
+          </div>
+        </div>
+        <div class="auto-row">
+          <button id="auto-send-toggle" class="btn" type="button">Activer l'envoi</button>
+          <button id="auto-send-reset" class="btn secondary" type="button">Réinitialiser le suivi</button>
+        </div>
+        <div id="auto-send-status" class="auto-status">Inactif.</div>
+      </section>
+
+      <section class="auto-section">
+        <h3>↓ Réception automatique</h3>
+        <label for="auto-recv-pick">Dossier de réception (sauvegarde des fichiers reçus)</label>
+        <div class="auto-row">
+          <button id="auto-recv-pick" class="btn secondary" type="button">Choisir le dossier…</button>
+          <span id="auto-recv-dir" class="dir-name">—</span>
+        </div>
+        <label for="auto-recv-freq">Fréquence</label>
+        <select id="auto-recv-freq">
+          <option value="immediate" selected>Immédiat (à la réception) — recommandé</option>
+          <option value="1min">Toutes les minutes</option>
+          <option value="5min">Toutes les 5 minutes</option>
+          <option value="10min">Toutes les 10 minutes</option>
+        </select>
+        <div class="auto-row">
+          <button id="auto-recv-toggle" class="btn" type="button">Activer la réception</button>
+        </div>
+        <div id="auto-recv-status" class="auto-status">Inactif.</div>
+        <p class="auto-warn">Le serveur garde les fichiers en mémoire 15 min seulement. Un délai supérieur ferait perdre des fichiers — d'où les choix ci-dessus.</p>
+      </section>
+
+      <p class="auto-note">Navigateur requis : Chrome ou Edge (API File System Access). Les boutons 📎 et Télécharger restent manuels. Les deux interlocuteurs doivent rester connectés pendant le transfert.</p>
+    </div>
+  </div>
+</div>
+
 <script>
 (function() {
   "use strict";
@@ -729,6 +852,7 @@
         };
         if (!conversations[peer]) conversations[peer] = [];
         conversations[peer].push(entry);
+        onFileReceived(data.transfer_id, data.filename);
         if (activePeer === peer) {
           renderFileBubble(entry, "recv");
         } else {
@@ -857,6 +981,7 @@
   function renderUserList(users) {
     _lastUserList = users;
     refreshUserList();
+    updateRecipientOptions();
   }
 
   function refreshUserList() {
@@ -1042,7 +1167,10 @@
     // Met à jour la copie en mémoire (pour une réouverture ultérieure de la conversation)
     Object.values(conversations).forEach(list => {
       list.forEach(m => {
-        if (m.kind === "file" && m.transferId === transferId) m.status = status;
+        if (m.kind === "file" && m.transferId === transferId) {
+          if (status === "expired" && m.status === "downloaded") return; // ne pas rétrograder un fichier déjà récupéré
+          m.status = status;
+        }
       });
     });
 
@@ -1063,6 +1191,7 @@
 
   function scrollBottom() {
     requestAnimationFrame(() => {
+      pruneMessages();
       messagesEl.scrollTop = messagesEl.scrollHeight;
     });
   }
@@ -1147,6 +1276,536 @@
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
     if (file) sendFile(file);
   });
+
+  // ────────────────────────────────────────────────────────
+  //  AUTOMATISMES DE TRANSFERT (envoi + réception)
+  //  API File System Access (Chrome/Edge). Les boutons 📎 et
+  //  Télécharger restent utilisables manuellement.
+  // ────────────────────────────────────────────────────────
+  const MAX_VISIBLE_BUBBLES = 500; // plafond DOM : évite le gel (lots de 4300+)
+
+  const FREQ_MS = {
+    'continu': 500, '1min': 60000, '1h': 3600000, '2h': 7200000,
+    '6h': 21600000, '12h': 43200000, '24h': 86400000
+  };
+  const RECV_FREQ_MS = { 'immediate': 0, '1min': 60000, '5min': 300000, '10min': 600000 };
+
+  const AUTO = {
+    sendEnabled: false, sendFreq: '1h', sendBatch: 10, sendRecipient: '',
+    recvEnabled: false, recvFreq: 'immediate',
+    sendDir: null, recvDir: null,
+    sentFiles: new Set(), recvPending: [],
+    sendTimer: null, recvTimer: null,
+  };
+
+  // ── Persistance paramètres ──
+  function autoLoadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem('canal.auto') || '{}');
+      if (s.sendFreq) AUTO.sendFreq = s.sendFreq;
+      if (s.sendBatch) AUTO.sendBatch = s.sendBatch;
+      if (s.sendRecipient) AUTO.sendRecipient = s.sendRecipient;
+      if (s.recvFreq) AUTO.recvFreq = s.recvFreq;
+      AUTO.sendEnabled = !!s.sendEnabled;
+      AUTO.recvEnabled = !!s.recvEnabled;
+      AUTO.sentFiles = new Set(JSON.parse(localStorage.getItem('canal.sentFiles') || '[]'));
+    } catch (e) { /* ignore */ }
+  }
+  function autoSaveSettings() {
+    localStorage.setItem('canal.auto', JSON.stringify({
+      sendEnabled: AUTO.sendEnabled, sendFreq: AUTO.sendFreq, sendBatch: AUTO.sendBatch,
+      sendRecipient: AUTO.sendRecipient, recvEnabled: AUTO.recvEnabled, recvFreq: AUTO.recvFreq
+    }));
+  }
+  function autoSaveSent() {
+    localStorage.setItem('canal.sentFiles', JSON.stringify([...AUTO.sentFiles]));
+  }
+
+  // ── IndexedDB pour les handles de dossier ──
+  const idb = {
+    _db: null,
+    open() {
+      return new Promise((resolve, reject) => {
+        if (this._db) return resolve(this._db);
+        const req = indexedDB.open('canal-auto', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('handles');
+        req.onsuccess = () => { this._db = req.result; resolve(this._db); };
+        req.onerror = () => reject(req.error);
+      });
+    },
+    get(key) { return this.open().then(db => new Promise((res, rej) => {
+      const r = db.transaction('handles', 'readonly').objectStore('handles').get(key);
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
+    set(key, val) { return this.open().then(db => new Promise((res, rej) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(val, key);
+      tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); })); }
+  };
+
+  async function ensurePermission(handle, mode) {
+    if (!handle) return false;
+    const opts = { mode: mode || 'readwrite' };
+    try {
+      if ((await handle.queryPermission(opts)) === 'granted') return true;
+      if ((await handle.requestPermission(opts)) === 'granted') return true;
+    } catch (e) { /* navigateur sans FS Access API */ }
+    return false;
+  }
+
+  // ── Éléments DOM du modal ──
+  const btnAuto        = document.getElementById("btn-auto");
+  const autoModal      = document.getElementById("auto-modal");
+  const autoClose      = document.getElementById("auto-close");
+  const autoSendPick   = document.getElementById("auto-send-pick");
+  const autoSendDir    = document.getElementById("auto-send-dir");
+  const autoSendTo     = document.getElementById("auto-send-to");
+  const autoSendFreq   = document.getElementById("auto-send-freq");
+  const autoSendBatch  = document.getElementById("auto-send-batch");
+  const autoSendToggle = document.getElementById("auto-send-toggle");
+  const autoSendReset  = document.getElementById("auto-send-reset");
+  const autoSendStatus = document.getElementById("auto-send-status");
+  const autoRecvPick   = document.getElementById("auto-recv-pick");
+  const autoRecvDir    = document.getElementById("auto-recv-dir");
+  const autoRecvFreq   = document.getElementById("auto-recv-freq");
+  const autoRecvToggle = document.getElementById("auto-recv-toggle");
+  const autoRecvStatus = document.getElementById("auto-recv-status");
+
+  // ── Détection du mode d'accès au système de fichiers ──
+  // Trois contextes possibles, du préféré au plus limité :
+  //  (1) Pont Java (window.javaApp.pickDirectory) : navigateur JavaFX
+  //      "Navigator" — WebView n'a pas la File System Access API, le
+  //      pont Java ouvre DirectoryChooser + HttpClient à sa place.
+  //  (2) File System Access API (window.showDirectoryPicker) : Chrome,
+  //      Edge, Opera — persistence IndexedDB des handles entre sessions.
+  //  (3) Aucun des deux : Firefox, Safari — automates désactivés.
+  const hasBridge      = !!(window.javaApp && typeof window.javaApp.pickDirectory === 'function');
+  const fsApiSupported = !hasBridge && typeof window.showDirectoryPicker === 'function';
+  const autoAccessKind = hasBridge ? 'bridge' : (fsApiSupported ? 'fsapi' : 'none');
+
+  // Dossier "bridge" = chemin absolu stocké en chaîne ; dossier "fsapi"
+  // = FileSystemDirectoryHandle. On distingue les deux par typeof.
+  function isBridgeDir(d) { return typeof d === 'string'; }
+
+  // File d'attente des opérations async du pont. uploadFileFromPath et
+  // downloadFileToDir sont fire-and-forget côté Java : ils déclenchent
+  // window.onJavaBridgeEvent("autoUploadDone"|"autoUploadError"|...,
+  // reqId[:msg]). On wrappe ça en promesses pour pouvoir await côté JS.
+  const bridgeQueue = {
+    _pending: new Map(), // reqId -> {resolve, reject}
+    _next: 1,
+    _wrapped: false,
+    wrap() {
+      if (this._wrapped) return;
+      this._wrapped = true;
+      const prev = window.onJavaBridgeEvent;
+      window.onJavaBridgeEvent = (type, detail) => {
+        try { if (prev) prev(type, detail); } catch (e) { /* handler original */ }
+        this._dispatch(type, detail);
+      };
+    },
+    _dispatch(type, detail) {
+      const d = String(detail == null ? '' : detail);
+      const idx = d.indexOf(':');
+      const id = idx >= 0 ? d.slice(0, idx) : d;
+      const msg = idx >= 0 ? d.slice(idx + 1) : '';
+      const p = this._pending.get(id);
+      if (!p) return;
+      if (type === 'autoUploadDone' || type === 'autoDownloadDone') {
+        this._pending.delete(id); p.resolve();
+      } else if (type === 'autoUploadError' || type === 'autoDownloadError') {
+        this._pending.delete(id); p.reject(new Error(msg || 'échec pont'));
+      }
+    },
+    _nextId() { return String(this._next++); },
+    uploadFile(dirPath, fileName, to) {
+      this.wrap();
+      const id = this._nextId();
+      return new Promise((resolve, reject) => {
+        this._pending.set(id, { resolve, reject });
+        try {
+          window.javaApp.uploadFileFromPath(dirPath, fileName, myPseudo, to, location.origin, id);
+        } catch (e) { this._pending.delete(id); reject(e); }
+      });
+    },
+    downloadFile(url, dirPath, fileName) {
+      this.wrap();
+      const id = this._nextId();
+      return new Promise((resolve, reject) => {
+        this._pending.set(id, { resolve, reject });
+        try {
+          window.javaApp.downloadFileToDir(url, dirPath, fileName, id);
+        } catch (e) { this._pending.delete(id); reject(e); }
+      });
+    }
+  };
+
+  function setAutoStatus(which, msg, cls) {
+    const el = which === 'send' ? autoSendStatus : autoRecvStatus;
+    el.textContent = msg;
+    el.className = 'auto-status' + (cls ? ' ' + cls : '');
+  }
+  function describeDir(d) {
+    if (!d) return '—';
+    if (typeof d === 'string') {
+      // chemin absolu (mode pont) — on n'affiche que le dernier segment
+      const seg = d.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop();
+      return (seg || d) + '/';
+    }
+    return d.name + '/';
+  }
+
+  function updateRecipientOptions() {
+    if (!autoSendTo) return;
+    const cur = AUTO.sendRecipient || autoSendTo.value;
+    const others = (_lastUserList || []).filter(u => u !== myPseudo);
+    autoSendTo.innerHTML = '';
+    if (others.length === 0) {
+      autoSendTo.innerHTML = '<option value="">— aucun destinataire en ligne —</option>';
+    } else {
+      others.forEach(u => {
+        const o = document.createElement('option');
+        o.value = u; o.textContent = u;
+        if (u === cur) o.selected = true;
+        autoSendTo.appendChild(o);
+      });
+      if (!others.includes(cur)) AUTO.sendRecipient = others[0];
+    }
+  }
+
+  function refreshAutoUI() {
+    autoSendFreq.value = AUTO.sendFreq;
+    autoSendBatch.value = AUTO.sendBatch;
+    autoRecvFreq.value = AUTO.recvFreq;
+    autoSendDir.textContent = describeDir(AUTO.sendDir);
+    autoRecvDir.textContent = describeDir(AUTO.recvDir);
+    autoSendToggle.textContent = AUTO.sendEnabled ? "Désactiver l'envoi" : "Activer l'envoi";
+    autoRecvToggle.textContent = AUTO.recvEnabled ? "Désactiver la réception" : "Activer la réception";
+    updateRecipientOptions();
+    if (autoAccessKind === 'none') {
+      setAutoStatus('send', 'Accès au système de fichiers indisponible — utilisez Chrome, Edge ou le navigateur JavaFX Navigator.', 'err');
+      setAutoStatus('recv', 'Accès au système de fichiers indisponible — utilisez Chrome, Edge ou le navigateur JavaFX Navigator.', 'err');
+    } else if (autoAccessKind === 'bridge') {
+      setAutoStatus('send', "Mode pont Java actif (Navigator). Cliquez « Choisir » puis « Activer l'envoi ».");
+      setAutoStatus('recv', "Mode pont Java actif (Navigator). Cliquez « Choisir » puis « Activer la réception ».");
+    }
+  }
+
+  // ── Envoi automatique ──
+  function naturalCompare(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+  async function listDirFiles(dirHandle) {
+    const out = [];
+    for await (const entry of dirHandle.values()) if (entry.kind === 'file') out.push(entry);
+    out.sort((a, b) => naturalCompare(a.name, b.name));
+    return out;
+  }
+  function uploadFileRaw(file, to) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = `/upload?from=${encodeURIComponent(myPseudo)}&to=${encodeURIComponent(to)}&filename=${encodeURIComponent(file.name)}`;
+      xhr.open("POST", url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.onload = () => {
+        if (xhr.status >= 400) {
+          let msg = "Échec de l'envoi.";
+          try { msg = JSON.parse(xhr.responseText).detail || msg; } catch (e2) {}
+          reject(new Error(msg));
+        } else resolve();
+      };
+      xhr.onerror = () => reject(new Error("Connexion perdue pendant l'envoi."));
+      xhr.send(file);
+    });
+  }
+  async function sendCycle() {
+    if (!AUTO.sendEnabled || !AUTO.sendDir || !ws) return;
+    // Permission : pertinent seulement en mode fsapi (handles persistants).
+    // En mode bridge, chaque pickDirectory() est déjà un geste utilisateur
+    // explicite — pas de ré-autorisation nécessaire.
+    if (!isBridgeDir(AUTO.sendDir) && !(await ensurePermission(AUTO.sendDir, 'read'))) {
+      setAutoStatus('send', "Accès au dossier d'envoi refusé — rouvrez le dossier.", 'err'); return;
+    }
+    const to = AUTO.sendRecipient;
+    if (!to || !(_lastUserList || []).includes(to)) {
+      setAutoStatus('send', `Destinataire « ${to || '—'} » hors ligne. En attente…`, 'err'); return;
+    }
+
+    if (isBridgeDir(AUTO.sendDir)) {
+      // ── Mode pont Java (navigateur JavaFX Navigator) ──
+      let names;
+      try { names = JSON.parse(window.javaApp.listFiles(AUTO.sendDir)); }
+      catch (e) { setAutoStatus('send', 'Erreur lecture dossier : ' + e.message, 'err'); return; }
+      const total = names.length;
+      const todo = names.filter(n => !AUTO.sentFiles.has(n)).slice(0, AUTO.sendBatch);
+      if (todo.length === 0) {
+        setAutoStatus('send', `Terminé : ${AUTO.sentFiles.size}/${total} fichiers envoyés.`, 'ok'); return;
+      }
+      setAutoStatus('send', `Envoi ${AUTO.sentFiles.size + 1}/${total} : ${todo[0]}`);
+      for (const name of todo) {
+        if (!AUTO.sendEnabled) break;
+        if (!(_lastUserList || []).includes(to)) {
+          setAutoStatus('send', `Destinataire « ${to} » déconnecté. Pause.`, 'err'); break;
+        }
+        try {
+          // Le contrôle de taille est délégué au serveur (/upload rejette
+          // les fichiers > MAX_FILE_SIZE) — le pont ne lit pas la taille
+          // pour éviter un appel supplémentaire par fragment.
+          await bridgeQueue.uploadFile(AUTO.sendDir, name, to);
+          AUTO.sentFiles.add(name); autoSaveSent();
+          setAutoStatus('send', `Envoyé ${AUTO.sentFiles.size}/${total} : ${name}`, 'ok');
+        } catch (e) {
+          setAutoStatus('send', `Erreur sur ${name} : ${e.message}. Reprise au prochain cycle.`, 'err');
+          break;
+        }
+      }
+      return;
+    }
+
+    // ── Mode File System Access API (Chrome / Edge) ──
+    let files;
+    try { files = await listDirFiles(AUTO.sendDir); }
+    catch (e) { setAutoStatus('send', 'Erreur lecture dossier : ' + e.message, 'err'); return; }
+    const total = files.length;
+    const todo = files.filter(h => !AUTO.sentFiles.has(h.name)).slice(0, AUTO.sendBatch);
+    if (todo.length === 0) {
+      setAutoStatus('send', `Terminé : ${AUTO.sentFiles.size}/${total} fichiers envoyés.`, 'ok'); return;
+    }
+    setAutoStatus('send', `Envoi ${AUTO.sentFiles.size + 1}/${total} : ${todo[0].name}`);
+    for (const h of todo) {
+      if (!AUTO.sendEnabled) break;
+      if (!(_lastUserList || []).includes(to)) {
+        setAutoStatus('send', `Destinataire « ${to} » déconnecté. Pause.`, 'err'); break;
+      }
+      try {
+        const file = await h.getFile();
+        if (file.size === 0 || file.size > MAX_FILE_SIZE) {
+          AUTO.sentFiles.add(h.name); autoSaveSent(); continue; // ignore vides / trop gros
+        }
+        await uploadFileRaw(file, to);
+        AUTO.sentFiles.add(h.name); autoSaveSent();
+        setAutoStatus('send', `Envoyé ${AUTO.sentFiles.size}/${total} : ${h.name}`, 'ok');
+      } catch (e) {
+        setAutoStatus('send', `Erreur sur ${h.name} : ${e.message}. Reprise au prochain cycle.`, 'err');
+        break;
+      }
+    }
+  }
+  function scheduleNextSend() {
+    if (AUTO.sendTimer) { clearTimeout(AUTO.sendTimer); AUTO.sendTimer = null; }
+    if (!AUTO.sendEnabled) return;
+    const delay = FREQ_MS[AUTO.sendFreq] || 3600000;
+    AUTO.sendTimer = setTimeout(async () => {
+      try { await sendCycle(); } catch (e) { setAutoStatus('send', 'Erreur cycle : ' + e.message, 'err'); }
+      scheduleNextSend();
+    }, delay);
+  }
+  function startSend() {
+    AUTO.sendEnabled = true; autoSaveSettings(); refreshAutoUI();
+    setAutoStatus('send', 'Démarrage…');
+    (async () => {
+      try { await sendCycle(); } catch (e) { setAutoStatus('send', 'Erreur : ' + e.message, 'err'); }
+      scheduleNextSend();
+    })();
+  }
+  function stopSend() {
+    AUTO.sendEnabled = false;
+    if (AUTO.sendTimer) { clearTimeout(AUTO.sendTimer); AUTO.sendTimer = null; }
+    autoSaveSettings(); refreshAutoUI();
+    setAutoStatus('send', 'Envoi désactivé.');
+  }
+
+  // ── Réception automatique ──
+  async function autoDownloadFile(transferId, filename) {
+    if (!AUTO.recvDir) throw new Error("Aucun dossier de réception.");
+
+    if (isBridgeDir(AUTO.recvDir)) {
+      // ── Mode pont Java ── : le pont fait lui-même le GET /download et
+      // écrit directement dans le dossier (pas de fetch côté JS, pas de
+      // base64 — HttpClient + Files.write côté Java).
+      await bridgeQueue.downloadFile(`${location.origin}/download/${transferId}`, AUTO.recvDir, filename);
+      return;
+    }
+
+    // ── Mode File System Access API ──
+    if (!(await ensurePermission(AUTO.recvDir, 'readwrite')))
+      throw new Error("Accès au dossier de réception refusé.");
+    const resp = await fetch(`/download/${transferId}`);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const buf = await resp.arrayBuffer();
+    const fh = await AUTO.recvDir.getFileHandle(filename, { create: true });
+    const w = await fh.createWritable();
+    await w.write(buf);
+    await w.close();
+  }
+  function onFileReceived(transferId, filename) {
+    if (!AUTO.recvEnabled || !AUTO.recvDir) return;
+    if (AUTO.recvFreq === 'immediate') {
+      setAutoStatus('recv', `Réception de ${filename}…`);
+      autoDownloadFile(transferId, filename)
+        .then(() => setAutoStatus('recv', `Sauvegardé : ${filename}`, 'ok'))
+        .catch(err => setAutoStatus('recv', `Échec ${filename} : ${err.message}`, 'err'));
+    } else {
+      AUTO.recvPending.push({ transferId, filename });
+      setAutoStatus('recv', `${AUTO.recvPending.length} fichier(s) en attente de sauvegarde.`);
+    }
+  }
+  async function recvCycle() {
+    if (!AUTO.recvEnabled || !AUTO.recvDir || AUTO.recvPending.length === 0) {
+      if (AUTO.recvEnabled) setAutoStatus('recv', 'Rien à sauvegarder.', 'ok'); return;
+    }
+    const items = AUTO.recvPending.splice(0);
+    for (const it of items) {
+      try { await autoDownloadFile(it.transferId, it.filename);
+        setAutoStatus('recv', `Sauvegardé : ${it.filename}`, 'ok'); }
+      catch (e) { setAutoStatus('recv', `Échec ${it.filename} : ${e.message}`, 'err'); }
+    }
+  }
+  function scheduleNextRecv() {
+    if (AUTO.recvTimer) { clearInterval(AUTO.recvTimer); AUTO.recvTimer = null; }
+    if (!AUTO.recvEnabled || AUTO.recvFreq === 'immediate') return;
+    const ms = RECV_FREQ_MS[AUTO.recvFreq] || 60000;
+    AUTO.recvTimer = setInterval(async () => {
+      try { await recvCycle(); } catch (e) { setAutoStatus('recv', 'Erreur : ' + e.message, 'err'); }
+    }, ms);
+  }
+  function startRecv() {
+    AUTO.recvEnabled = true; autoSaveSettings(); refreshAutoUI();
+    setAutoStatus('recv', AUTO.recvFreq === 'immediate' ? 'Réception immédiate active.' : 'Réception par lot active.');
+    scheduleNextRecv();
+  }
+  function stopRecv() {
+    AUTO.recvEnabled = false;
+    if (AUTO.recvTimer) { clearInterval(AUTO.recvTimer); AUTO.recvTimer = null; }
+    autoSaveSettings(); refreshAutoUI();
+    setAutoStatus('recv', 'Réception désactivée.');
+  }
+
+  // ── Pickers de dossier ──
+  async function pickSendDir() {
+    if (hasBridge) {
+      // Mode pont Java : DirectoryChooser natif, renvoie un chemin absolu
+      // (chaîne). Persistance localStorage — pas IndexedDB, car un chemin
+      // est sérialisable en JSON alors qu'un FileSystemDirectoryHandle ne
+      // l'est que via la file system API.
+      const p = window.javaApp.pickDirectory();
+      if (!p) return; // annulé
+      AUTO.sendDir = p;
+      try { localStorage.setItem('canal.sendDir', p); } catch (e) { /* ignore */ }
+      autoSendDir.textContent = describeDir(p);
+      setAutoStatus('send', "Dossier d'envoi configuré : " + p);
+      return;
+    }
+    if (!fsApiSupported) { setAutoStatus('send', 'Navigateur non supporté (Chrome, Edge ou Navigator requis).', 'err'); return; }
+    try {
+      const h = await window.showDirectoryPicker({ mode: 'read' });
+      AUTO.sendDir = h; await idb.set('sendDir', h);
+      autoSendDir.textContent = describeDir(h);
+      setAutoStatus('send', "Dossier d'envoi configuré : " + h.name);
+    } catch (e) { /* annulé par l'utilisateur */ }
+  }
+  async function pickRecvDir() {
+    if (hasBridge) {
+      const p = window.javaApp.pickDirectory();
+      if (!p) return;
+      AUTO.recvDir = p;
+      try { localStorage.setItem('canal.recvDir', p); } catch (e) { /* ignore */ }
+      autoRecvDir.textContent = describeDir(p);
+      setAutoStatus('recv', 'Dossier de réception configuré : ' + p);
+      return;
+    }
+    if (!fsApiSupported) { setAutoStatus('recv', 'Navigateur non supporté (Chrome, Edge ou Navigator requis).', 'err'); return; }
+    try {
+      const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+      AUTO.recvDir = h; await idb.set('recvDir', h);
+      autoRecvDir.textContent = describeDir(h);
+      setAutoStatus('recv', 'Dossier de réception configuré : ' + h.name);
+    } catch (e) { /* annulé */ }
+  }
+
+  // ── Restauration au chargement ──
+  async function restoreHandles() {
+    if (hasBridge) {
+      // Mode pont Java : les chemins sont des chaînes persistées en
+      // localStorage (pas IndexedDB, qui ne sert qu'aux handles FS Access).
+      try {
+        const s = localStorage.getItem('canal.sendDir'); if (s) AUTO.sendDir = s;
+        const r = localStorage.getItem('canal.recvDir'); if (r) AUTO.recvDir = r;
+      } catch (e) { /* ignore */ }
+    } else {
+      try {
+        const s = await idb.get('sendDir'); if (s) AUTO.sendDir = s;
+        const r = await idb.get('recvDir'); if (r) AUTO.recvDir = r;
+      } catch (e) { /* ignore */ }
+    }
+    refreshAutoUI();
+    // Après un rechargement, le navigateur exige un geste pour réaccorder
+    // les permissions : on remet l'automatisme en "à réactiver".
+    // (En mode pont, le chemin persisté est toujours valide — pas besoin
+    // de ré-autorisation — mais on garde le même comportement pour
+    // uniformiser l'UX : l'utilisateur clique "Activer" pour démarrer.)
+    if (AUTO.sendEnabled) {
+      setAutoStatus('send', "Cliquez « Activer l'envoi » pour confirmer l'accès au dossier.");
+      AUTO.sendEnabled = false; autoSaveSettings(); refreshAutoUI();
+    }
+    if (AUTO.recvEnabled) {
+      setAutoStatus('recv', "Cliquez « Activer la réception » pour confirmer l'accès au dossier.");
+      AUTO.recvEnabled = false; autoSaveSettings(); refreshAutoUI();
+    }
+  }
+
+  // ── Branchement des événements du modal ──
+  btnAuto.addEventListener("click", () => {
+    if (appEl.style.display === "none") return; // pas connecté
+    refreshAutoUI(); autoModal.hidden = false;
+  });
+  autoClose.addEventListener("click", () => { autoModal.hidden = true; });
+  autoModal.addEventListener("click", (e) => { if (e.target === autoModal) autoModal.hidden = true; });
+
+  autoSendPick.addEventListener("click", pickSendDir);
+  autoRecvPick.addEventListener("click", pickRecvDir);
+  autoSendFreq.addEventListener("change", () => {
+    AUTO.sendFreq = autoSendFreq.value; autoSaveSettings();
+    if (AUTO.sendEnabled) scheduleNextSend();
+  });
+  autoSendBatch.addEventListener("change", () => {
+    AUTO.sendBatch = Math.max(1, Math.min(500, parseInt(autoSendBatch.value, 10) || 1));
+    autoSaveSettings();
+  });
+  autoSendTo.addEventListener("change", () => { AUTO.sendRecipient = autoSendTo.value; autoSaveSettings(); });
+  autoRecvFreq.addEventListener("change", () => {
+    AUTO.recvFreq = autoRecvFreq.value; autoSaveSettings();
+    if (AUTO.recvEnabled) scheduleNextRecv();
+  });
+  autoSendToggle.addEventListener("click", async () => {
+    if (AUTO.sendEnabled) { stopSend(); return; }
+    if (!AUTO.sendDir) { setAutoStatus('send', "Choisissez d'abord le dossier d'envoi.", 'err'); return; }
+    if (!(await ensurePermission(AUTO.sendDir, 'read'))) { setAutoStatus('send', 'Accès refusé au dossier.', 'err'); return; }
+    if (!AUTO.sendRecipient || !(_lastUserList || []).includes(AUTO.sendRecipient)) {
+      setAutoStatus('send', 'Choisissez un destinataire en ligne.', 'err'); return;
+    }
+    startSend();
+  });
+  autoRecvToggle.addEventListener("click", async () => {
+    if (AUTO.recvEnabled) { stopRecv(); return; }
+    if (!AUTO.recvDir) { setAutoStatus('recv', 'Choisissez d\'abord le dossier de réception.', 'err'); return; }
+    if (!(await ensurePermission(AUTO.recvDir, 'readwrite'))) { setAutoStatus('recv', 'Accès refusé au dossier.', 'err'); return; }
+    startRecv();
+  });
+  autoSendReset.addEventListener("click", () => {
+    AUTO.sentFiles.clear(); autoSaveSent();
+    setAutoStatus('send', 'Suivi réinitialisé — tous les fichiers seront renvoyés.');
+  });
+
+  // ── Plafond DOM : évite le gel avec des milliers de bulles ──
+  function pruneMessages() {
+    while (messagesEl.childElementCount > MAX_VISIBLE_BUBBLES) {
+      messagesEl.removeChild(messagesEl.firstElementChild);
+    }
+  }
+
+  // ── Init automatismes ──
+  autoLoadSettings();
+  restoreHandles();
 
 })();
 </script>
