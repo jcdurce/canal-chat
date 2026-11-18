@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CANAL — Chat privé éphémère</title>
 <style>
-  /* Automatismes de transfert — addendum CANAL */
   /* ── Typographie & variables ───────────────────────────── */
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
@@ -615,7 +614,7 @@
     <div id="messages"></div>
 
     <div id="input-area">
-      <span class="hint">Ctrl+Entrée pour envoyer · Collez de très longs textes · 📎 ou glissez-déposez un fichier (max 85 Mo)</span>
+      <span class="hint">Ctrl+Entrée pour envoyer · Collez de très longs textes · 📎 ou glissez-déposez un fichier (max 50 Mo)</span>
       <textarea id="message-input" placeholder="Écrivez ici… Ctrl+V pour coller, Ctrl+Entrée pour envoyer."></textarea>
       <div id="file-error"></div>
       <div class="input-row">
@@ -705,7 +704,7 @@
 (function() {
   "use strict";
 
-  const MAX_FILE_SIZE = 85 * 1024 * 1024; // 85 Mo — doit correspondre au backend
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 Mo — doit correspondre au backend
 
   // ── État ─────────────────────────────────────────────────
   let ws = null;
@@ -927,7 +926,7 @@
     if (!activePeer || !ws) return;
 
     if (file.size > MAX_FILE_SIZE) {
-      showFileError(`« ${file.name} » dépasse la limite de 85 Mo.`);
+      showFileError(`« ${file.name} » dépasse la limite de 50 Mo.`);
       return;
     }
     if (file.size === 0) {
@@ -1379,9 +1378,36 @@
   //  (2) File System Access API (window.showDirectoryPicker) : Chrome,
   //      Edge, Opera — persistence IndexedDB des handles entre sessions.
   //  (3) Aucun des deux : Firefox, Safari — automates désactivés.
-  const hasBridge      = !!(window.javaApp && typeof window.javaApp.pickDirectory === 'function');
-  const fsApiSupported = !hasBridge && typeof window.showDirectoryPicker === 'function';
-  const autoAccessKind = hasBridge ? 'bridge' : (fsApiSupported ? 'fsapi' : 'none');
+  //
+  // IMPORTANT : hasBridge et autoAccessKind sont des FONCTIONS, pas des
+  // consts. JavaFX WebView injecte window.javaApp au Worker.State.SUCCEEDED
+  // de SimpleSearchApp, c'est-à-dire APRÈS le parse de ce script. Si on
+  // évaluait hasBridge une fois pour toutes au parse, window.javaApp
+  // serait toujours undefined à ce moment-là, et le mode pont ne serait
+  // jamais détecté ( symptôme : "Accès au système de fichiers
+  // indisponible" alors que le pont est bien injecté ). En ré-évaluant
+  // à chaque appel — ouverture du modal ⚙, clic sur "Choisir", cycle
+  // d'envoi — on tombe toujours juste.
+  function hasBridge() {
+    return !!(window.javaApp && typeof window.javaApp.pickDirectory === 'function');
+  }
+  // fsApiSupported, lui, peut rester constant : l'existence de
+  // showDirectoryPicker ne change pas entre le parse et l'interaction.
+  const fsApiSupported = typeof window.showDirectoryPicker === 'function';
+  function autoAccessKind() {
+    if (hasBridge()) return 'bridge';
+    if (fsApiSupported) return 'fsapi';
+    return 'none';
+  }
+  // Diagnostic fin pour distinguer les sous-cas de 'none' :
+  //  - 'no-bridge'    : window.javaApp absent (SimpleSearchApp n'injecte pas)
+  //  - 'bridge-stale' : window.javaApp présent mais sans pickDirectory
+  //                     (l'ancien FileBridge est encore compilé)
+  function bridgeDiag() {
+    if (!window.javaApp) return 'no-bridge';
+    if (typeof window.javaApp.pickDirectory !== 'function') return 'bridge-stale';
+    return 'ok';
+  }
 
   // Dossier "bridge" = chemin absolu stocké en chaîne ; dossier "fsapi"
   // = FileSystemDirectoryHandle. On distingue les deux par typeof.
@@ -1482,10 +1508,27 @@
     autoSendToggle.textContent = AUTO.sendEnabled ? "Désactiver l'envoi" : "Activer l'envoi";
     autoRecvToggle.textContent = AUTO.recvEnabled ? "Désactiver la réception" : "Activer la réception";
     updateRecipientOptions();
-    if (autoAccessKind === 'none') {
-      setAutoStatus('send', 'Accès au système de fichiers indisponible — utilisez Chrome, Edge ou le navigateur JavaFX Navigator.', 'err');
-      setAutoStatus('recv', 'Accès au système de fichiers indisponible — utilisez Chrome, Edge ou le navigateur JavaFX Navigator.', 'err');
-    } else if (autoAccessKind === 'bridge') {
+    const kind = autoAccessKind();
+    if (kind === 'none') {
+      // Diagnostic fin pour aider à identifier pourquoi le pont n'est pas
+      // détecté. Les deux sous-cas sont :
+      //  - no-bridge    : SimpleSearchApp n'injecte pas window.javaApp
+      //                   (vérifiez l'écouteur sur Worker.State.SUCCEEDED)
+      //  - bridge-stale : window.javaApp est là mais sans pickDirectory
+      //                   (l'ancien FileBridge.java est encore compilé —
+      //                   faites mvn clean javafx:run)
+      const diag = bridgeDiag();
+      let msg;
+      if (diag === 'no-bridge') {
+        msg = "Pont Java non injecté — vérifiez SimpleSearchApp.java : engine.setMember(\"javaApp\", new FileBridge(...)) doit être appelé au Worker.State.SUCCEEDED.";
+      } else if (diag === 'bridge-stale') {
+        msg = "Pont Java détecté mais incomplet (méthode pickDirectory manquante) — recompilez FileBridge.java : mvn clean javafx:run.";
+      } else {
+        msg = "Accès au système de fichiers indisponible — utilisez Chrome, Edge ou le navigateur JavaFX Navigator.";
+      }
+      setAutoStatus('send', msg, 'err');
+      setAutoStatus('recv', msg, 'err');
+    } else if (kind === 'bridge') {
       setAutoStatus('send', "Mode pont Java actif (Navigator). Cliquez « Choisir » puis « Activer l'envoi ».");
       setAutoStatus('recv', "Mode pont Java actif (Navigator). Cliquez « Choisir » puis « Activer la réception ».");
     }
@@ -1683,7 +1726,7 @@
 
   // ── Pickers de dossier ──
   async function pickSendDir() {
-    if (hasBridge) {
+    if (hasBridge()) {
       // Mode pont Java : DirectoryChooser natif, renvoie un chemin absolu
       // (chaîne). Persistance localStorage — pas IndexedDB, car un chemin
       // est sérialisable en JSON alors qu'un FileSystemDirectoryHandle ne
@@ -1705,7 +1748,7 @@
     } catch (e) { /* annulé par l'utilisateur */ }
   }
   async function pickRecvDir() {
-    if (hasBridge) {
+    if (hasBridge()) {
       const p = window.javaApp.pickDirectory();
       if (!p) return;
       AUTO.recvDir = p;
@@ -1725,7 +1768,7 @@
 
   // ── Restauration au chargement ──
   async function restoreHandles() {
-    if (hasBridge) {
+    if (hasBridge()) {
       // Mode pont Java : les chemins sont des chaînes persistées en
       // localStorage (pas IndexedDB, qui ne sert qu'aux handles FS Access).
       try {
@@ -1806,7 +1849,22 @@
 
   // ── Init automatismes ──
   autoLoadSettings();
-  restoreHandles();
+  // On retarde restoreHandles() : en mode Navigator, window.javaApp est
+  // injecté par SimpleSearchApp au Worker.State.SUCCEEDED, APRÈS le
+  // parse de ce script. Si on appelait restoreHandles() tout de suite,
+  // hasBridge() renverrait false et le chemin persisté en localStorage
+  // ne serait jamais restauré. On pollle toutes les 100 ms jusqu'à ce
+  // que le pont apparaisse, ou qu'on ait la certitude qu'il n'existera
+  // pas (FS Access API présent, ou 5 s écoulées sans rien).
+  function tryRestoreHandles(attempts) {
+    attempts = attempts || 0;
+    if (window.javaApp || fsApiSupported || attempts > 50) {
+      restoreHandles();
+    } else {
+      setTimeout(() => tryRestoreHandles(attempts + 1), 100);
+    }
+  }
+  tryRestoreHandles();
 
 })();
 </script>
