@@ -1302,6 +1302,12 @@
     sendDir: null, recvDir: null,
     sentFiles: new Set(), recvPending: [],
     sendTimer: null, recvTimer: null,
+    // Compteurs de cycles (non persistés) : incrémentés à chaque exécution
+    // de sendCycle/recvCycle. Affichés dans le statut avec un horodatage
+    // pour que l'utilisateur voie que l'automate "bat" même quand il n'y
+    // a rien à envoyer (sinon le message statique "Terminé : 13/13" donne
+    // l'impression que rien ne se passe en mode lot).
+    sendCycles: 0, recvCycles: 0,
   };
 
   // ── Persistance paramètres ──
@@ -1569,6 +1575,7 @@
   }
   async function sendCycle() {
     if (!AUTO.sendEnabled || !AUTO.sendDir || !ws) return;
+    AUTO.sendCycles++;
     // Permission : pertinent seulement en mode fsapi (handles persistants).
     // En mode bridge, chaque pickDirectory() est déjà un geste utilisateur
     // explicite — pas de ré-autorisation nécessaire.
@@ -1577,7 +1584,7 @@
     }
     const to = AUTO.sendRecipient;
     if (!to || !(_lastUserList || []).includes(to)) {
-      setAutoStatus('send', `Destinataire « ${to || '—'} » hors ligne. En attente…`, 'err'); return;
+      setAutoStatus('send', `Cycle ${AUTO.sendCycles} — destinataire « ${to || '—'} » hors ligne. En attente…`, 'err'); return;
     }
 
     if (isBridgeDir(AUTO.sendDir)) {
@@ -1588,7 +1595,13 @@
       const total = names.length;
       const todo = names.filter(n => !AUTO.sentFiles.has(n)).slice(0, AUTO.sendBatch);
       if (todo.length === 0) {
-        setAutoStatus('send', `Terminé : ${AUTO.sentFiles.size}/${total} fichiers envoyés.`, 'ok'); return;
+        const _ts = new Date().toLocaleTimeString();
+        const _all = AUTO.sentFiles.size >= total && total > 0;
+        setAutoStatus('send',
+          _all
+            ? `Cycle ${AUTO.sendCycles} à ${_ts} — ${AUTO.sentFiles.size}/${total} déjà envoyés. En attente de nouveaux fichiers. (« Réinitialiser le suivi » pour renvoyer.)`
+            : `Cycle ${AUTO.sendCycles} à ${_ts} — dossier vide (0 fichier).`,
+          'ok'); return;
       }
       setAutoStatus('send', `Envoi ${AUTO.sentFiles.size + 1}/${total} : ${todo[0]}`);
       for (const name of todo) {
@@ -1618,7 +1631,13 @@
     const total = files.length;
     const todo = files.filter(h => !AUTO.sentFiles.has(h.name)).slice(0, AUTO.sendBatch);
     if (todo.length === 0) {
-      setAutoStatus('send', `Terminé : ${AUTO.sentFiles.size}/${total} fichiers envoyés.`, 'ok'); return;
+      const _ts = new Date().toLocaleTimeString();
+      const _all = AUTO.sentFiles.size >= total && total > 0;
+      setAutoStatus('send',
+        _all
+          ? `Cycle ${AUTO.sendCycles} à ${_ts} — ${AUTO.sentFiles.size}/${total} déjà envoyés. En attente de nouveaux fichiers. (« Réinitialiser le suivi » pour renvoyer.)`
+          : `Cycle ${AUTO.sendCycles} à ${_ts} — dossier vide (0 fichier).`,
+        'ok'); return;
     }
     setAutoStatus('send', `Envoi ${AUTO.sentFiles.size + 1}/${total} : ${todo[0].name}`);
     for (const h of todo) {
@@ -1700,14 +1719,18 @@
     }
   }
   async function recvCycle() {
-    if (!AUTO.recvEnabled || !AUTO.recvDir || AUTO.recvPending.length === 0) {
-      if (AUTO.recvEnabled) setAutoStatus('recv', 'Rien à sauvegarder.', 'ok'); return;
+    if (!AUTO.recvEnabled || !AUTO.recvDir) return;
+    AUTO.recvCycles++;
+    if (AUTO.recvPending.length === 0) {
+      const _ts = new Date().toLocaleTimeString();
+      setAutoStatus('recv', `Cycle ${AUTO.recvCycles} à ${_ts} — rien à sauvegarder, file vide. En attente de fichiers entrants.`, 'ok');
+      return;
     }
     const items = AUTO.recvPending.splice(0);
     for (const it of items) {
       try { await autoDownloadFile(it.transferId, it.filename);
-        setAutoStatus('recv', `Sauvegardé : ${it.filename}`, 'ok'); }
-      catch (e) { setAutoStatus('recv', `Échec ${it.filename} : ${e.message}`, 'err'); }
+        setAutoStatus('recv', `Cycle ${AUTO.recvCycles} — sauvegardé : ${it.filename}`, 'ok'); }
+      catch (e) { setAutoStatus('recv', `Cycle ${AUTO.recvCycles} — échec ${it.filename} : ${e.message}`, 'err'); }
     }
   }
   function scheduleNextRecv() {
@@ -1739,6 +1762,14 @@
       // l'est que via la file system API.
       const p = window.javaApp.pickDirectory();
       if (!p) return; // annulé
+      // Changement de dossier : on purge le suivi des fichiers déjà envoyés.
+      // Sinon, des fichiers du nouveau dossier portant le même nom qu'un
+      // fichier déjà envoyé dans l'ancien dossier seraient silencieusement
+      // skippés par sendCycle (filter sur AUTO.sentFiles) — d'où l'impression
+      // que "rien ne se passe" alors que le dossier contient bien des fichiers.
+      if (AUTO.sendDir && AUTO.sendDir !== p) {
+        AUTO.sentFiles.clear(); autoSaveSent();
+      }
       AUTO.sendDir = p;
       try { localStorage.setItem('canal.sendDir', p); } catch (e) { /* ignore */ }
       autoSendDir.textContent = describeDir(p);
@@ -1758,6 +1789,12 @@
     if (!fsApiSupported) { setAutoStatus('send', 'Navigateur non supporté (Chrome, Edge ou Navigator requis).', 'err'); return; }
     try {
       const h = await window.showDirectoryPicker({ mode: 'read' });
+      // Comparaison par nom (FileSystemDirectoryHandle n'a pas d'égalité
+      // structurelle fiable) : si le dossier change, on purge sentFiles
+      // pour la même raison qu'en mode pont.
+      if (AUTO.sendDir && AUTO.sendDir.name !== h.name) {
+        AUTO.sentFiles.clear(); autoSaveSent();
+      }
       AUTO.sendDir = h; await idb.set('sendDir', h);
       autoSendDir.textContent = describeDir(h);
       setAutoStatus('send', "Dossier d'envoi configuré : " + h.name);
@@ -1767,6 +1804,11 @@
     if (hasBridge()) {
       const p = window.javaApp.pickDirectory();
       if (!p) return;
+      // Changement de dossier : on purge la file d'attente réception. Les
+      // fichiers en attente étaient destinés à l'ancien dossier.
+      if (AUTO.recvDir && AUTO.recvDir !== p) {
+        AUTO.recvPending.length = 0;
+      }
       AUTO.recvDir = p;
       try { localStorage.setItem('canal.recvDir', p); } catch (e) { /* ignore */ }
       autoRecvDir.textContent = describeDir(p);
@@ -1784,6 +1826,9 @@
     if (!fsApiSupported) { setAutoStatus('recv', 'Navigateur non supporté (Chrome, Edge ou Navigator requis).', 'err'); return; }
     try {
       const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+      if (AUTO.recvDir && AUTO.recvDir.name !== h.name) {
+        AUTO.recvPending.length = 0;
+      }
       AUTO.recvDir = h; await idb.set('recvDir', h);
       autoRecvDir.textContent = describeDir(h);
       setAutoStatus('recv', 'Dossier de réception configuré : ' + h.name);
@@ -1900,6 +1945,17 @@
   autoSendReset.addEventListener("click", () => {
     AUTO.sentFiles.clear(); autoSaveSent();
     setAutoStatus('send', 'Suivi réinitialisé — tous les fichiers seront renvoyés.');
+    // Si l'automate est actif, on déclenche un cycle immédiat au lieu
+    // d'attendre le prochain tick du timer (qui pourrait être dans
+    // jusqu'à 60 s en mode 1min). Sans ça, l'utilisateur clique reset
+    // puis attend sans rien voir partir — d'où l'impression d'un
+    // workflow lourd à chaque renvoi.
+    if (AUTO.sendEnabled) {
+      (async () => {
+        try { await sendCycle(); } catch (e) { setAutoStatus('send', 'Erreur post-reset : ' + e.message, 'err'); }
+        scheduleNextSend();
+      })();
+    }
   });
 
   // ── Plafond DOM : évite le gel avec des milliers de bulles ──
