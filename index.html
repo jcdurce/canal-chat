@@ -754,9 +754,15 @@
       showFileError(detail || "Échec de l'envoi du fichier.");
     } else if (type === "downloadError") {
       showFileError(detail || "Échec du téléchargement.");
+    } else if (type === "listError") {
+      // Erreur de listFiles côté pont Java. On l'affiche dans le statut
+      // d'envoi (le seul automate qui appelle listFiles). Le détail
+      // contient déjà le chemin et le message d'exception Java.
+      setAutoStatus('send', "Erreur lecture dossier : " + detail, 'err');
     }
     // "downloadDone" n'a rien à faire ici : l'événement WebSocket
     // "file_downloaded" / "file_expired" met déjà à jour la bulle.
+    // Les événements "auto*" sont dispatchés par bridgeQueue._dispatch.
   };
 
   // ── Connexion ─────────────────────────────────────────────
@@ -1736,7 +1742,17 @@
       AUTO.sendDir = p;
       try { localStorage.setItem('canal.sendDir', p); } catch (e) { /* ignore */ }
       autoSendDir.textContent = describeDir(p);
-      setAutoStatus('send', "Dossier d'envoi configuré : " + p);
+      // Probe immédiat : on valide que la JVM peut réellement lister le
+      // dossier AVANT que l'utilisateur clique "Activer". Évite le piège
+      // UAC (admin mais process non élevé) ou Controlled Folder Access.
+      try {
+        const probe = JSON.parse(window.javaApp.probeDirectory(p));
+        if (!probe.exists) setAutoStatus('send', "Chemin invalide : " + p, 'err');
+        else if (!probe.listable) setAutoStatus('send', "Dossier choisi mais non listable par la JVM — " + (probe.error || 'cause inconnue') + ". Relance Navigator en admin ou désactive Controlled Folder Access.", 'err');
+        else setAutoStatus('send', "Dossier d'envoi configuré : " + p + " (" + probe.fileCount + " fichier(s) détecté(s)).");
+      } catch (e) {
+        setAutoStatus('send', "Dossier configuré mais probe impossible : " + e.message, 'err');
+      }
       return;
     }
     if (!fsApiSupported) { setAutoStatus('send', 'Navigateur non supporté (Chrome, Edge ou Navigator requis).', 'err'); return; }
@@ -1754,7 +1770,15 @@
       AUTO.recvDir = p;
       try { localStorage.setItem('canal.recvDir', p); } catch (e) { /* ignore */ }
       autoRecvDir.textContent = describeDir(p);
-      setAutoStatus('recv', 'Dossier de réception configuré : ' + p);
+      try {
+        const probe = JSON.parse(window.javaApp.probeDirectory(p));
+        if (!probe.exists) setAutoStatus('recv', "Chemin invalide : " + p, 'err');
+        else if (!probe.listable) setAutoStatus('recv', "Dossier choisi mais non listable par la JVM — " + (probe.error || 'cause inconnue') + ".", 'err');
+        else if (!probe.writable) setAutoStatus('recv', "Dossier non inscriptible — " + (probe.error || 'cause inconnue') + ".", 'err');
+        else setAutoStatus('recv', "Dossier de réception configuré : " + p + " (inscriptible, " + probe.fileCount + " fichier(s)).");
+      } catch (e) {
+        setAutoStatus('recv', "Dossier configuré mais probe impossible : " + e.message, 'err');
+      }
       return;
     }
     if (!fsApiSupported) { setAutoStatus('recv', 'Navigateur non supporté (Chrome, Edge ou Navigator requis).', 'err'); return; }
@@ -1820,10 +1844,49 @@
     AUTO.recvFreq = autoRecvFreq.value; autoSaveSettings();
     if (AUTO.recvEnabled) scheduleNextRecv();
   });
+  // Valide l'accès au dossier avant d'activer un automate. Branche sur le
+  // mode : en mode pont, ensurePermission (FS Access API) n'a pas de sens
+  // — on appelle plutôt probeDirectory() qui fait un test réel (exists,
+  // readable, listable) côté JVM et renvoie un diagnostic exploitable.
+  // Renvoie true si l'accès est OK, false sinon (et affiche le message).
+  async function checkDirAccess(which, mode) {
+    const dir = which === 'send' ? AUTO.sendDir : AUTO.recvDir;
+    if (!dir) {
+      setAutoStatus(which, which === 'send' ? "Choisissez d'abord le dossier d'envoi." : "Choisissez d'abord le dossier de réception.", 'err');
+      return false;
+    }
+    if (isBridgeDir(dir)) {
+      // Mode pont Java : on demande au pont un diagnostic réel.
+      let probe;
+      try { probe = JSON.parse(window.javaApp.probeDirectory(dir)); }
+      catch (e) {
+        setAutoStatus(which, "Pont Java inaccessible pour vérifier le dossier : " + e.message, 'err');
+        return false;
+      }
+      if (!probe.exists) {
+        setAutoStatus(which, "Le dossier n'existe plus : " + dir, 'err'); return false;
+      }
+      if (!probe.listable) {
+        setAutoStatus(which, "Dossier non listable par la JVM — " + (probe.error || "cause inconnue") + ". Cause probable : UAC (relance Navigator « en tant qu'administrateur ») ou Controlled Folder Access (Windows Security → Ransomware protection).", 'err');
+        return false;
+      }
+      if (mode === 'readwrite' && !probe.writable) {
+        setAutoStatus(which, "Dossier non inscriptible par la JVM — " + (probe.error || "cause inconnue") + ".", 'err');
+        return false;
+      }
+      return true;
+    }
+    // Mode FS Access API : permission query/request native.
+    if (!(await ensurePermission(dir, mode))) {
+      setAutoStatus(which, "Accès refusé au dossier — re-cliquez « Choisir » pour réaccorder.", 'err');
+      return false;
+    }
+    return true;
+  }
+
   autoSendToggle.addEventListener("click", async () => {
     if (AUTO.sendEnabled) { stopSend(); return; }
-    if (!AUTO.sendDir) { setAutoStatus('send', "Choisissez d'abord le dossier d'envoi.", 'err'); return; }
-    if (!(await ensurePermission(AUTO.sendDir, 'read'))) { setAutoStatus('send', 'Accès refusé au dossier.', 'err'); return; }
+    if (!(await checkDirAccess('send', 'read'))) return;
     if (!AUTO.sendRecipient || !(_lastUserList || []).includes(AUTO.sendRecipient)) {
       setAutoStatus('send', 'Choisissez un destinataire en ligne.', 'err'); return;
     }
@@ -1831,8 +1894,7 @@
   });
   autoRecvToggle.addEventListener("click", async () => {
     if (AUTO.recvEnabled) { stopRecv(); return; }
-    if (!AUTO.recvDir) { setAutoStatus('recv', 'Choisissez d\'abord le dossier de réception.', 'err'); return; }
-    if (!(await ensurePermission(AUTO.recvDir, 'readwrite'))) { setAutoStatus('recv', 'Accès refusé au dossier.', 'err'); return; }
+    if (!(await checkDirAccess('recv', 'readwrite'))) return;
     startRecv();
   });
   autoSendReset.addEventListener("click", () => {
