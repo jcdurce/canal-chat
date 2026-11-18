@@ -68,7 +68,7 @@ Pour un usage régulier, Railway est préférable.
 Chaque session de chat permet d'envoyer un fichier au destinataire ouvert, en plus du texte.
 
 - **Bouton 📎** à côté d'Envoyer, ou **glisser-déposer** directement dans la fenêtre de conversation
-- **Taille maximale : 50 Mo** par fichier
+- **Taille maximale : 85 Mo** par fichier
 - **Tous les types de fichiers** sont acceptés
 - Le fichier est gardé **uniquement en mémoire serveur** — jamais écrit sur disque
 - **Téléchargement à usage unique** : dès que le destinataire clique sur « Télécharger », le fichier disparaît de la mémoire du serveur
